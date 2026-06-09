@@ -1,0 +1,21 @@
+{
+  "name": "opencode-herdr",
+  "version": "0.1.0",
+  "description": "OpenCode plugin for herdr terminal multiplexer — auto-split panes for subagent visibility",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsup",
+    "prepublishOnly": "bun run build"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.0.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.5.0"
+  },
+  "keywords": ["opencode", "herdr", "plugin", "terminal", "multiplexer"],
+  "license": "MIT"
+}
