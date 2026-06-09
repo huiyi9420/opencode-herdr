@@ -52,14 +52,15 @@ export async function splitPane(
 
 /**
  * Run a command in a specific pane. Fire and forget.
+ * Accepts individual arguments for safe shell interpolation.
  */
 export async function runInPane(
   $: any,
   paneId: string,
-  command: string
+  ...commandParts: string[]
 ): Promise<void> {
   try {
-    await $`herdr pane run ${paneId} "${command}"`.quiet().nothrow();
+    await $`herdr pane run ${paneId} ${commandParts}`.quiet().nothrow();
   } catch {
     // fire and forget
   }

@@ -46,6 +46,14 @@ const plugin: Plugin = async ({ client, $ }) => {
     const paneId = activeSplits.get(sessionId)
     if (!paneId) return
     activeSplits.delete(sessionId)
+
+    // Invalidate stale frontier entries pointing to the closed pane
+    for (let i = 0; i < rowFrontier.length; i++) {
+      if (rowFrontier[i] === paneId) {
+        rowFrontier[i] = originalPaneId ?? undefined
+      }
+    }
+
     closePane($, paneId).catch(() => {})
     if (activeSplits.size === 0) {
       resetGridState()
@@ -92,10 +100,11 @@ const plugin: Plugin = async ({ client, $ }) => {
         if (!config.splits) return
         if (!e.data?.parentID) return
         if (!serverUrl) return
-        if (activeSplits.has(e.data.id)) return
+        const sessionId = e.data?.id
+        if (!sessionId) return
+        if (activeSplits.has(sessionId)) return
 
         await enqueueSplitOp(async () => {
-          const sessionId = e.data.id
           if (activeSplits.has(sessionId)) return // Re-check after await
 
           const { direction, fromPaneId } = getGridLayout()
@@ -105,8 +114,7 @@ const plugin: Plugin = async ({ client, $ }) => {
           if (!newPaneId) return // Split failed — skip this subagent
 
           // Run opencode attach in the new pane
-          const attachCmd = `opencode attach ${serverUrl} --session ${sessionId}`
-          await runInPane($, newPaneId, attachCmd)
+          await runInPane($, newPaneId, "opencode", "attach", serverUrl, "--session", sessionId)
 
           // Store mapping and update grid
           activeSplits.set(sessionId, newPaneId)
