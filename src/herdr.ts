@@ -1,4 +1,19 @@
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
+
+/**
+ * Resolve the absolute path to the herdr binary.
+ * Bun's execSync may not inherit the full PATH, so we resolve upfront.
+ */
+function herdrBin(): string {
+  if (process.env.HERDR_BIN_PATH) return process.env.HERDR_BIN_PATH;
+  try {
+    return execSync("which herdr", { encoding: "utf-8" }).trim();
+  } catch {
+    return "herdr";
+  }
+}
+
+const HERDR = herdrBin();
 
 /**
  * Check if we're running inside a herdr environment.
@@ -17,7 +32,7 @@ export async function getCurrentPaneId($: any): Promise<string | null> {
   }
 
   try {
-    const result = await $`herdr pane list --json`.quiet().nothrow();
+    const result = await $`${HERDR} pane list --json`.quiet().nothrow();
     const text = result.text?.() ?? result.stdout?.toString() ?? String(result);
     if (!text) return null;
 
@@ -32,18 +47,13 @@ export async function getCurrentPaneId($: any): Promise<string | null> {
 /**
  * Split a pane in the given direction and return the new pane ID.
  */
-export async function splitPane(
-  $: any,
-  direction: "right" | "down",
-  fromPaneId: string
-): Promise<string | null> {
+export function splitPane(direction: "right" | "down", fromPaneId: string): string | null {
   try {
-    const result =
-      $`herdr pane split ${fromPaneId} --direction ${direction} --no-focus`
-        .quiet()
-        .nothrow();
-    const text = await result;
-    const parsed = JSON.parse(text.toString());
+    const output = execSync(
+      `${HERDR} pane split ${fromPaneId} --direction ${direction} --no-focus`,
+      { encoding: "utf-8" },
+    );
+    const parsed = JSON.parse(output);
     return parsed?.result?.pane?.pane_id ?? null;
   } catch {
     return null;
@@ -52,15 +62,16 @@ export async function splitPane(
 
 /**
  * Run a command in a specific pane. Fire and forget.
- * Accepts individual arguments for safe shell interpolation.
+ *
+ * Uses spawnSync with an explicit argv array so the command text is passed as
+ * a single argument. Herdr's `pane run` expects the text as one argument —
+ * passing multiple args causes it to treat the first word as an executable
+ * and fail with ENOENT.
  */
-export async function runInPane(
-  $: any,
-  paneId: string,
-  ...commandParts: string[]
-): Promise<void> {
+export function runInPane(paneId: string, ...commandParts: string[]): void {
   try {
-    await $`herdr pane run ${paneId} ${commandParts}`.quiet().nothrow();
+    const text = commandParts.join(" ");
+    spawnSync(HERDR, ["pane", "run", paneId, text], { encoding: "utf-8" });
   } catch {
     // fire and forget
   }
@@ -69,9 +80,9 @@ export async function runInPane(
 /**
  * Close a pane. Silently ignores all errors.
  */
-export async function closePane($: any, paneId: string): Promise<void> {
+export function closePane(paneId: string): void {
   try {
-    await $`herdr pane close ${paneId}`.quiet().nothrow();
+    execSync(`${HERDR} pane close ${paneId}`, { encoding: "utf-8" });
   } catch {
     // silently swallow all errors
   }
@@ -109,7 +120,7 @@ export function resolveServerUrl(): string | null {
   try {
     const output = execSync(
       `lsof -nP -a -p ${process.pid} -iTCP -sTCP:LISTEN`,
-      { encoding: "utf-8", timeout: 3000 }
+      { encoding: "utf-8", timeout: 3000 },
     );
     const match = output.match(/:(\d+)\s+\(LISTEN\)/);
     if (match) {
@@ -124,7 +135,7 @@ export function resolveServerUrl(): string | null {
   // Step 3: No URL available
   _resolvedServerUrl = null;
   console.warn(
-    "opencode-herdr: Could not resolve OpenCode server URL. Splits will be disabled. Start OpenCode with --port flag."
+    "opencode-herdr: Could not resolve OpenCode server URL. Splits will be disabled. Start OpenCode with --port flag.",
   );
   return null;
 }

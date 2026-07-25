@@ -24,7 +24,7 @@ const plugin: Plugin = async ({ client, $ }) => {
   let splitQueue: Promise<unknown> = Promise.resolve(undefined)
 
   // --- Queue: serialize all split/close operations ---
-  function enqueueSplitOp<T>(fn: () => Promise<T>): Promise<T> {
+  function enqueueSplitOp<T>(fn: () => T): Promise<T> {
     const result = splitQueue.then(fn, fn)
     splitQueue = result.then(
       () => {},
@@ -47,14 +47,13 @@ const plugin: Plugin = async ({ client, $ }) => {
     if (!paneId) return
     activeSplits.delete(sessionId)
 
-    // Invalidate stale frontier entries pointing to the closed pane
     for (let i = 0; i < rowFrontier.length; i++) {
       if (rowFrontier[i] === paneId) {
         rowFrontier[i] = originalPaneId ?? undefined
       }
     }
 
-    closePane($, paneId).catch(() => {})
+    closePane(paneId)
     if (activeSplits.size === 0) {
       resetGridState()
     }
@@ -63,18 +62,13 @@ const plugin: Plugin = async ({ client, $ }) => {
   // --- Grid layout: determine split direction and source pane ---
   function getGridLayout(): { direction: "right" | "down"; fromPaneId: string | null } {
     const n = agentCount
-
     if (n === 0) {
-      // 1st subagent: split right from original pane
       return { direction: config.direction, fromPaneId: originalPaneId }
     } else if (n === 1) {
-      // 2nd subagent: split down from frontier[0]
       return { direction: "down", fromPaneId: rowFrontier[0] ?? null }
     } else if (n === 2) {
-      // 3rd subagent: split down from original pane
       return { direction: "down", fromPaneId: originalPaneId }
     } else {
-      // 4th+ subagent: split right from appropriate row frontier
       const rowIdx = (n - 3) % 3
       return { direction: "right", fromPaneId: rowFrontier[rowIdx] ?? null }
     }
@@ -94,29 +88,29 @@ const plugin: Plugin = async ({ client, $ }) => {
   return {
     async event({ event }) {
       const e = event as any
+      const props = e.properties ?? {}
 
       // --- session.created: create split for child sessions ---
+      // Event shape: { type, properties: { sessionID, info: { parentID, ... } } }
       if (e.type === "session.created") {
         if (!config.splits) return
-        if (!e.data?.parentID) return
+        if (!props.info?.parentID) return
         if (!serverUrl) return
-        const sessionId = e.data?.id
+        const sessionId = props.sessionID
         if (!sessionId) return
         if (activeSplits.has(sessionId)) return
 
-        await enqueueSplitOp(async () => {
-          if (activeSplits.has(sessionId)) return // Re-check after await
+        enqueueSplitOp(() => {
+          if (activeSplits.has(sessionId)) return
 
           const { direction, fromPaneId } = getGridLayout()
           if (!fromPaneId) return
 
-          const newPaneId = await splitPane($, direction, fromPaneId)
-          if (!newPaneId) return // Split failed — skip this subagent
+          const newPaneId = splitPane(direction, fromPaneId)
+          if (!newPaneId) return
 
-          // Run opencode attach in the new pane
-          await runInPane($, newPaneId, "opencode", "attach", serverUrl, "--session", sessionId)
+          runInPane(newPaneId, "opencode", "attach", serverUrl, "--session", sessionId)
 
-          // Store mapping and update grid
           activeSplits.set(sessionId, newPaneId)
           updateGridState(newPaneId)
         })
@@ -125,14 +119,13 @@ const plugin: Plugin = async ({ client, $ }) => {
       }
 
       // --- session.status: auto-close idle subagents ---
+      // Event shape: { type, properties: { sessionID, status: { type: "busy"|"idle" } } }
       if (e.type === "session.status") {
         if (!config.autoClose) return
-        const sessionId = e.data?.id
-        const status = e.data?.status?.type ?? e.data?.status
+        const sessionId = props.sessionID
+        const status = props.status?.type ?? props.status
         if (status !== "idle") return
 
-        // Only close subagent sessions (those with a parentID)
-        // Check if this session is in activeSplits (which only contains subagents)
         if (sessionId && activeSplits.has(sessionId)) {
           removeAndClose(sessionId)
         }
@@ -141,7 +134,7 @@ const plugin: Plugin = async ({ client, $ }) => {
 
       // --- session.deleted: close pane if mapped ---
       if (e.type === "session.deleted") {
-        const sessionId = e.data?.id
+        const sessionId = props.sessionID
         if (sessionId && activeSplits.has(sessionId)) {
           removeAndClose(sessionId)
         }
@@ -150,7 +143,7 @@ const plugin: Plugin = async ({ client, $ }) => {
 
       // --- session.error: close pane if mapped ---
       if (e.type === "session.error") {
-        const sessionId = e.data?.id ?? e.data?.sessionID
+        const sessionId = props.sessionID
         if (sessionId && activeSplits.has(sessionId)) {
           removeAndClose(sessionId)
         }
