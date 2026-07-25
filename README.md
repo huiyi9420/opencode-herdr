@@ -88,7 +88,7 @@ MIT
 
 ## 本 fork 的变更说明（Chinese）
 
-本 fork 基于上游 `gustavocaiano/opencode-herdr` 的 `main` 分支 `f074b6c`，包含两个提交：
+本 fork 基于上游 `gustavocaiano/opencode-herdr` 的 `main` 分支 `f074b6c`，包含两个代码改动提交（不含本文档提交）：
 
 | Commit | 说明 |
 |--------|------|
@@ -112,11 +112,11 @@ MIT
 
 本 fork 优先读取 opencode 插件上下文注入的 `serverUrl`。常规使用不再要求固定 `--port`，多开实例可使用各自的实际监听端口，减少端口冲突。
 
-本 fork 不改事件监听、网格布局和 `autoClose` 逻辑。最坏情况下退回旧版路径：环境变量、`lsof`，最后禁用分屏并输出警告。
+`serverUrl` 加固提交（`6d02524`）不改事件监听、网格布局和 `autoClose` 逻辑。基线提交（`1db76b3`）另包含 opencode 事件 payload 形状的兼容调整（`e.data` → `e.properties`）与构建配置调整（关闭 dts 声明文件生成）。最坏情况下退回旧版路径：环境变量、`lsof`，最后禁用分屏并输出警告。
 
 ### E2E 验证
 
-验证环境：`herdr v0.7.5`、`opencode 1.18.5`、macOS。
+本机手工 E2E 验证环境：`herdr v0.7.5`、`opencode 1.18.5`、macOS。
 
 | 启动方式 | 结果 |
 |----------|------|
