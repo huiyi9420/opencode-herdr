@@ -2,7 +2,7 @@ import type { Plugin } from "@opencode-ai/plugin"
 import { isInHerdr, getCurrentPaneId, splitPane, runInPane, closePane, resolveServerUrl } from "./herdr"
 import { loadConfig } from "./config"
 
-const plugin: Plugin = async ({ client, $ }) => {
+const plugin: Plugin = async ({ client, $, serverUrl: injectedUrl }) => {
   // Early exit if not in herdr
   if (!isInHerdr()) {
     return {
@@ -14,7 +14,7 @@ const plugin: Plugin = async ({ client, $ }) => {
 
   // Load config and resolve server URL at startup
   const config = loadConfig()
-  const serverUrl = resolveServerUrl()
+  const serverUrl = resolveServerUrl(injectedUrl)
   const originalPaneId = await getCurrentPaneId($)
 
   // State

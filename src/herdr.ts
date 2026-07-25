@@ -92,23 +92,46 @@ export function closePane(paneId: string): void {
 let _resolvedServerUrl: string | null | undefined = undefined;
 
 /**
+ * Normalize a URL for use as the OpenCode server URL.
+ * Rewrites wildcard bind addresses (0.0.0.0 / [::]) to localhost and trims trailing slashes.
+ * Does not mutate the input URL.
+ */
+function normalizeUrl(url: URL): string {
+  const u = new URL(url.toString());
+  if (u.hostname === "0.0.0.0" || u.hostname === "[::]") {
+    u.hostname = "localhost";
+  }
+  return u.toString().replace(/\/+$/, "");
+}
+
+/**
  * Resolve the OpenCode server URL.
  * Memoized — only resolves once, then returns the cached value.
+ *
+ * Resolution order:
+ * 1. Injected URL from plugin context (skipped when port is empty or "0" — known upstream bug)
+ * 2. OPENCODE_SERVER_URL env var
+ * 3. lsof to discover the listening port of the current process
+ * 4. null + warning (splits disabled)
  */
-export function resolveServerUrl(): string | null {
+export function resolveServerUrl(injected?: URL): string | null {
   if (_resolvedServerUrl !== undefined) {
     return _resolvedServerUrl;
   }
 
-  // Step 1: Check env var
+  // Step 1: Use injected URL from plugin context when it carries a usable port.
+  // Upstream bug: `opencode --port 0` may inject port as the string "0", which is unusable.
+  if (injected && injected.port && injected.port !== "0") {
+    const url = normalizeUrl(injected);
+    _resolvedServerUrl = url;
+    return url;
+  }
+
+  // Step 2: Check env var
   const envUrl = process.env.OPENCODE_SERVER_URL;
   if (envUrl) {
     try {
-      const parsed = new URL(envUrl);
-      if (parsed.hostname === "0.0.0.0" || parsed.hostname === "[::]") {
-        parsed.hostname = "localhost";
-      }
-      const url = parsed.toString().replace(/\/+$/, "");
+      const url = normalizeUrl(new URL(envUrl));
       _resolvedServerUrl = url;
       return url;
     } catch {
@@ -116,7 +139,7 @@ export function resolveServerUrl(): string | null {
     }
   }
 
-  // Step 2: Fall back to lsof
+  // Step 3: Fall back to lsof
   try {
     const output = execSync(
       `lsof -nP -a -p ${process.pid} -iTCP -sTCP:LISTEN`,
@@ -132,7 +155,7 @@ export function resolveServerUrl(): string | null {
     // lsof failed, fall through
   }
 
-  // Step 3: No URL available
+  // Step 4: No URL available
   _resolvedServerUrl = null;
   console.warn(
     "opencode-herdr: Could not resolve OpenCode server URL. Splits will be disabled. Start OpenCode with --port flag.",
